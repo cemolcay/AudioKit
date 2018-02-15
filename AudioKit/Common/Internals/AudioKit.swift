@@ -40,12 +40,19 @@ public typealias AKCallback = () -> Void
 
     @objc static var finalMixer = AKMixer()
 
+    /// Notification observers
+    fileprivate static var notificationObservers: [Any] = []
+
     /// An audio output operation that most applications will need to use last
     @objc open static var output: AKNode? {
         didSet {
-            updateSessionCategoryAndOptions()
-            output?.connect(to: finalMixer)
-            engine.connect(finalMixer.avAudioNode, to: engine.outputNode)
+            do {
+                try updateSessionCategoryAndOptions()
+                output?.connect(to: finalMixer)
+                engine.connect(finalMixer.avAudioNode, to: engine.outputNode)
+            } catch {
+                AKLog("Could not set output: \(error)")
+            }
         }
     }
 
@@ -139,14 +146,16 @@ public typealias AKCallback = () -> Void
     /// Change the preferred input device, giving it one of the names from the list of available inputs.
     @objc open static func setInputDevice(_ input: AKDevice) throws {
         #if os(macOS)
-            var address = AudioObjectPropertyAddress(
-                mSelector: kAudioHardwarePropertyDefaultInputDevice,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMaster)
-            var devid = input.deviceID
-            AudioObjectSetPropertyData(
-                AudioObjectID(kAudioObjectSystemObject),
-                &address, 0, nil, UInt32(MemoryLayout<AudioDeviceID>.size), &devid)
+            try AKTry {
+                var address = AudioObjectPropertyAddress(
+                    mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMaster)
+                var devid = input.deviceID
+                AudioObjectSetPropertyData(
+                    AudioObjectID(kAudioObjectSystemObject),
+                    &address, 0, nil, UInt32(MemoryLayout<AudioDeviceID>.size), &devid)
+            }
         #else
             if let devices = AVAudioSession.sharedInstance().availableInputs {
                 for device in devices {
@@ -189,13 +198,15 @@ public typealias AKCallback = () -> Void
     /// Change the preferred output device, giving it one of the names from the list of available output.
     @objc open static func setOutputDevice(_ output: AKDevice) throws {
         #if os(macOS)
-            var id = output.deviceID
-            if let audioUnit = AudioKit.engine.outputNode.audioUnit {
-                AudioUnitSetProperty(audioUnit,
-                                     kAudioOutputUnitProperty_CurrentDevice,
-                                     kAudioUnitScope_Global, 0,
-                                     &id,
-                                     UInt32(MemoryLayout<DeviceID>.size))
+            try AKTry {
+                var id = output.deviceID
+                if let audioUnit = AudioKit.engine.outputNode.audioUnit {
+                    AudioUnitSetProperty(audioUnit,
+                                         kAudioOutputUnitProperty_CurrentDevice,
+                                         kAudioUnitScope_Global, 0,
+                                         &id,
+                                         UInt32(MemoryLayout<DeviceID>.size))
+                }
             }
         #else
             //not available on ios
@@ -205,79 +216,88 @@ public typealias AKCallback = () -> Void
     // MARK: - Start/Stop
 
     /// Start up the audio engine with periodic functions
-    open static func start(withPeriodicFunctions functions: AKPeriodicFunction...) {
+    open static func start(withPeriodicFunctions functions: AKPeriodicFunction...) throws {
         for function in functions {
             function.connect(to: finalMixer)
         }
-        start()
+        try start()
     }
 
     /// Start up the audio engine
-    @objc open static func start() {
+    @objc open static func start() throws {
         if output == nil {
-            AKLog("AudioKit: No output node has been set yet, no processing will happen.")
+            AKLog("No output node has been set yet, no processing will happen.")
         }
         // Start the engine.
-        do {
+        try AKTry {
             engine.prepare()
-
-            #if os(iOS)
-
-                if AKSettings.enableRouteChangeHandling {
-                    NotificationCenter.default.addObserver(
-                        self,
-                        selector: #selector(AudioKit.restartEngineAfterRouteChange),
-                        name: .AVAudioSessionRouteChange,
-                        object: nil)
-                }
-
-                if AKSettings.enableCategoryChangeHandling {
-                    NotificationCenter.default.addObserver(
-                        self,
-                        selector: #selector(AudioKit.restartEngineAfterConfigurationChange),
-                        name: .AVAudioEngineConfigurationChange,
-                        object: engine)
-                }
-                updateSessionCategoryAndOptions()
-                try AVAudioSession.sharedInstance().setActive(true)
-            #endif
-
-            try engine.start()
-            shouldBeRunning = true
-
-        } catch {
-            fatalError("AudioKit: Could not start engine. error: \(error).")
         }
+
+        #if os(iOS)
+
+            if AKSettings.enableRouteChangeHandling {
+
+                let routeChangeObserver = NotificationCenter.default.addObserver(forName: .AVAudioSessionRouteChange,
+                                                                                 object: nil,
+                                                                                 queue: OperationQueue.main,
+                                                                                 using: { (notification) in
+                                                                                    AudioKit.restartEngineAfterRouteChange(notification)
+                })
+                notificationObservers.append(routeChangeObserver)
+
+            }
+
+            if AKSettings.enableCategoryChangeHandling {
+                let configurationChangeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                                                                         object: engine,
+                                                                                         queue: OperationQueue.main,
+                                                                                         using: { (notification) in
+                                                                                            AudioKit.restartEngineAfterConfigurationChange(notification)
+                })
+                notificationObservers.append(configurationChangeObserver)
+            }
+            try updateSessionCategoryAndOptions()
+            try AVAudioSession.sharedInstance().setActive(true)
+        #endif
+
+        try AKTry {
+            try engine.start()
+        }
+        shouldBeRunning = true
     }
 
-    @objc fileprivate static func updateSessionCategoryAndOptions() {
+    @objc fileprivate static func updateSessionCategoryAndOptions() throws {
         #if !os(macOS)
-            do {
-                let sessionCategory = AKSettings.computedSessionCategory()
-                let sessionOptions = AKSettings.computedSessionOptions()
+            let sessionCategory = AKSettings.computedSessionCategory()
+            let sessionOptions = AKSettings.computedSessionOptions()
 
-                #if os(iOS)
-                    try AKSettings.setSession(category: sessionCategory,
-                                              with: sessionOptions)
-                #elseif os(tvOS)
-                    try AKSettings.setSession(category: sessionCategory)
-                #endif
-            } catch {
-                fatalError("AudioKit: Could not update AVAudioSession category and options. error: \(error).")
-            }
+            #if os(iOS)
+                try AKSettings.setSession(category: sessionCategory,
+                                          with: sessionOptions)
+            #elseif os(tvOS)
+                try AKSettings.setSession(category: sessionCategory)
+            #endif
         #endif
     }
 
     /// Stop the audio engine
-    @objc open static func stop() {
+    @objc open static func stop() throws {
         // Stop the engine.
-        engine.stop()
+        try AKTry {
+            engine.stop()
+        }
         shouldBeRunning = false
+
         #if os(iOS)
+        notificationObservers.forEach { (observer) in
+            NotificationCenter.default.removeObserver(observer)
+        }
+
         do {
             try AVAudioSession.sharedInstance().setActive(false)
         } catch {
             AKLog("couldn't stop session \(error)")
+            throw error
         }
         #endif
     }
@@ -293,31 +313,29 @@ public typealias AKCallback = () -> Void
     ///   - node: AKNode to test
     ///   - duration: Number of seconds to test (accurate to the sample)
     ///
-    @objc open static func test(node: AKNode, duration: Double, afterStart: () -> Void = {}) {
+    @objc open static func test(node: AKNode, duration: Double, afterStart: () -> Void = {}) throws {
         #if swift(>=3.2)
-        if #available(iOS 11, macOS 10.13, tvOS 11, *) {
-            let samples = Int(duration * AKSettings.sampleRate)
+            if #available(iOS 11, macOS 10.13, tvOS 11, *) {
+                let samples = Int(duration * AKSettings.sampleRate)
 
-            tester = AKTester(node, samples: samples)
-            output = tester
+                tester = AKTester(node, samples: samples)
+                output = tester
 
-            do {
                 // maximum number of frames the engine will be asked to render in any single render call
                 let maxNumberOfFrames: AVAudioFrameCount = 4_096
-                engine.reset()
-                try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: maxNumberOfFrames)
-                try engine.start()
-            } catch {
-                fatalError("could not enable manual rendering mode, \(error)")
-            }
-            afterStart()
-            tester?.play()
+                try AKTry {
+                    engine.reset()
+                    try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: maxNumberOfFrames)
+                    try engine.start()
+                }
 
-            let buffer: AVAudioPCMBuffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
-                                                            frameCapacity: engine.manualRenderingMaximumFrameCount)!
+                afterStart()
+                tester?.play()
 
-            while engine.manualRenderingSampleTime < samples {
-                do {
+                let buffer: AVAudioPCMBuffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+                                                                frameCapacity: engine.manualRenderingMaximumFrameCount)!
+
+                while engine.manualRenderingSampleTime < samples {
                     let framesToRender = buffer.frameCapacity
                     let status = try engine.renderOffline(framesToRender, to: buffer)
                     switch status {
@@ -337,12 +355,9 @@ public typealias AKCallback = () -> Void
                         // error occurred while rendering
                         fatalError("render failed")
                     }
-                } catch {
-                    fatalError("render failed, \(error)")
                 }
+                tester?.stop()
             }
-            tester?.stop()
-        }
         #endif
     }
 
@@ -352,15 +367,15 @@ public typealias AKCallback = () -> Void
     ///   - node: AKNode to test
     ///   - duration: Number of seconds to test (accurate to the sample)
     ///
-    @objc open static func auditionTest(node: AKNode, duration: Double) {
+    @objc open static func auditionTest(node: AKNode, duration: Double) throws {
         output = node
-        start()
+        try start()
         if let playableNode = node as? AKToggleable {
             playableNode.play()
         }
         usleep(UInt32(duration * 1_000_000))
-        stop()
-        start()
+        try stop()
+        try start()
     }
 
     // MARK: - Configuration Change Response
@@ -368,45 +383,39 @@ public typealias AKCallback = () -> Void
     // Listen to changes in audio configuration
     // and restart the audio engine if it stops and should be playing
     @objc fileprivate static func restartEngineAfterConfigurationChange(_ notification: Notification) {
-        DispatchQueue.main.async {
+        do {
             if shouldBeRunning && !engine.isRunning {
-                do {
+                #if !os(macOS)
+                    let appIsNotActive = UIApplication.shared.applicationState != .active
+                    let appDoesNotSupportBackgroundAudio = !AKSettings.appSupportsBackgroundAudio
 
-                    #if !os(macOS)
-                        let appIsNotActive = UIApplication.shared.applicationState != .active
-                        let appDoesNotSupportBackgroundAudio = !AKSettings.appSupportsBackgroundAudio
-
-                        if appIsNotActive && appDoesNotSupportBackgroundAudio {
-                            AKLog("engine not restarted after configuration change since app was not active and does not support background audio")
-                            return
-                        }
-                    #endif
-
-                    try engine.start()
-                    dump(engine.outputNode.audioUnit)
-
-                    // Sends notification after restarting the engine, so it is safe to resume AudioKit functions.
-                    if AKSettings.notificationsEnabled {
-                        NotificationCenter.default.post(
-                            name: .AKEngineRestartedAfterConfigurationChange,
-                            object: nil,
-                            userInfo: notification.userInfo)
+                    if appIsNotActive && appDoesNotSupportBackgroundAudio {
+                        AKLog("engine not restarted after configuration change since app was not active and does not support background audio")
+                        return
                     }
+                #endif
 
-                } catch {
-                    AKLog("couldn't start engine after configuration change \(error)")
+                try engine.start()
+
+                // Sends notification after restarting the engine, so it is safe to resume AudioKit functions.
+                if AKSettings.notificationsEnabled {
+                    NotificationCenter.default.post(
+                        name: .AKEngineRestartedAfterConfigurationChange,
+                        object: nil,
+                        userInfo: notification.userInfo)
                 }
             }
+        } catch {
+            AKLog("error restarting engine after route change")
+            // Note: doesn't throw since this is called from a notification observer
         }
     }
 
     // Restarts the engine after audio output has been changed, like headphones plugged in.
     @objc fileprivate static func restartEngineAfterRouteChange(_ notification: Notification) {
-        DispatchQueue.main.async {
-            if shouldBeRunning && !engine.isRunning {
-                do {
-
-                    #if !os(macOS)
+        if shouldBeRunning && !engine.isRunning {
+            do {
+                #if !os(macOS)
                     let appIsNotActive = UIApplication.shared.applicationState != .active
                     let appDoesNotSupportBackgroundAudio = !AKSettings.appSupportsBackgroundAudio
 
@@ -414,20 +423,20 @@ public typealias AKCallback = () -> Void
                         AKLog("engine not restarted after route change since app was not active and does not support background audio")
                         return
                     }
-                    #endif
+                #endif
 
-                    try engine.start()
+                try engine.start()
 
-                    // Sends notification after restarting the engine, so it is safe to resume AudioKit functions.
-                    if AKSettings.notificationsEnabled {
-                        NotificationCenter.default.post(
-                            name: .AKEngineRestartedAfterRouteChange,
-                            object: nil,
-                            userInfo: notification.userInfo)
-                    }
-                } catch {
-                    AKLog("error restarting engine after route change")
+                // Sends notification after restarting the engine, so it is safe to resume AudioKit functions.
+                if AKSettings.notificationsEnabled {
+                    NotificationCenter.default.post(
+                        name: .AKEngineRestartedAfterRouteChange,
+                        object: nil,
+                        userInfo: notification.userInfo)
                 }
+            } catch {
+                AKLog("error restarting engine after route change")
+                // Note: doesn't throw since this is called from a notification observer
             }
         }
     }
@@ -499,7 +508,7 @@ extension AudioKit {
         guard let mixer = node as? AVAudioMixerNode,
             engine.isRunning,
             !engine.mixerHasInputs(mixer: mixer) else {
-            return nil
+                return nil
         }
 
         let dummy = AVAudioUnitSampler()
@@ -575,19 +584,22 @@ extension AVAudioEngine {
     @available(iOS 11.0, macOS 10.13, tvOS 11.0, *)
     public func renderToFile(_ audioFile: AVAudioFile, seconds: Double, prerender: (() -> Void)? = nil) throws {
         guard seconds >= 0 else {
-            throw NSError(domain: "AVAudioEngine ext", code: 1, userInfo: [NSLocalizedDescriptionKey: "Seconds needs to be a positive value"])
+            throw NSError(domain: "AVAudioEngine ext", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Seconds needs to be a positive value"])
         }
-        // Engine can't be running when switching to offline render mode.
-        if isRunning { stop() }
-        try enableManualRenderingMode(.offline, format: audioFile.processingFormat, maximumFrameCount: 4_096)
-
-        // This resets the sampleTime of offline rendering to 0.
-        reset()
-
-        try start()
+        try AKTry {
+            // Engine can't be running when switching to offline render mode.
+            if self.isRunning { self.stop() }
+            try self.enableManualRenderingMode(.offline, format: audioFile.processingFormat, maximumFrameCount: 4_096)
+            
+            // This resets the sampleTime of offline rendering to 0.
+            self.reset()
+            try self.start()
+        }
 
         guard let buffer = AVAudioPCMBuffer(pcmFormat: manualRenderingFormat, frameCapacity: manualRenderingMaximumFrameCount) else {
-            throw NSError(domain: "AVAudioEngine ext", code: 1, userInfo: [NSLocalizedDescriptionKey: "Couldn't creat buffer in renderToFile"])
+            throw NSError(domain: "AVAudioEngine ext", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Couldn't create buffer in renderToFile"])
         }
 
         // This is for users to prepare the nodes for playing, i.e player.play()
@@ -605,13 +617,15 @@ extension AVAudioEngine {
                 AKLog("renderToFile cannotDoInCurrentContext")
                 continue
             case .error, .insufficientDataFromInputNode:
-                throw NSError(domain: "AVAudioEngine ext", code: 1, userInfo: [NSLocalizedDescriptionKey: "renderToFile render error"])
+                throw NSError(domain: "AVAudioEngine ext", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "renderToFile render error"])
             }
         }
 
-        stop()
-        disableManualRenderingMode()
-
+        try AKTry {
+            self.stop()
+            self.disableManualRenderingMode()
+        }
     }
 }
 
