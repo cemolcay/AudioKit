@@ -2,7 +2,7 @@
 //  AudioUnitManager+Player.swift
 //  AudioUnitManager
 //
-//  Created by Ryan Francesconi on 12/8/17.
+//  Created by Ryan Francesconi, revision history on Githbub.
 //  Copyright © 2017 Ryan Francesconi. All rights reserved.
 //
 
@@ -13,11 +13,9 @@ extension AudioUnitManager {
 
     internal func handlePlay(state: Bool) {
         guard let player = player else { return }
-        guard let internalManager = internalManager else { return }
-
         // stop
         if player.isPlaying {
-            player.stop()
+            player.pause()
         }
 
         playButton.state = state ? .on : .off
@@ -41,6 +39,7 @@ extension AudioUnitManager {
             }
             startEngine(completionHandler: {
                 player.volume = 1
+
                 player.play(from: self.waveform?.position ?? 0)
                 self.startAudioTimer()
             })
@@ -84,7 +83,9 @@ extension AudioUnitManager {
 
     /// open an audio URL for playing
     func open(url: URL) {
-        guard let internalManager = internalManager else { return }
+        try? AudioKit.stop()
+
+        peak = nil
 
         if player == nil {
             player = AKPlayer(url: url)
@@ -98,6 +99,8 @@ extension AudioUnitManager {
         player.completionHandler = handleAudioComplete
         internalManager.connectEffects(firstNode: player, lastNode: mixer)
         player.isLooping = isLooping
+        player.isNormalized = false
+        player.buffering = isBuffered ? .always : .dynamic
 
         playButton.isEnabled = true
         fileField.stringValue = "🔈 \(url.lastPathComponent)"
@@ -114,8 +117,9 @@ extension AudioUnitManager {
         waveform.frame = waveformContainer.frame
         waveform.fitToFrame()
         waveform.delegate = self
-
         audioEnabled = true
+
+        audioNormalizedButton.state = .off
     }
 
     func close() {

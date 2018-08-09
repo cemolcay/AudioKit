@@ -2,7 +2,7 @@
 //  AudioUnitManager+Effects.swift
 //  AudioUnitManager
 //
-//  Created by Ryan Francesconi on 10/6/17.
+//  Created by Ryan Francesconi, revision history on Githbub.
 //  Copyright © 2017 Ryan Francesconi. All rights reserved.
 //
 
@@ -13,26 +13,18 @@ import Cocoa
 extension AudioUnitManager {
 
     internal func initManager() {
-        internalManager = AKAudioUnitManager(inserts: 6)
-        internalManager?.delegate = self
+        internalManager.delegate = self
 
-        internalManager?.requestEffects(completionHandler: { audioUnits in
+        internalManager.requestEffects(completionHandler: { audioUnits in
             self.updateEffectsUI(audioUnits: audioUnits)
         })
 
-        internalManager?.requestInstruments(completionHandler: { audioUnits in
+        internalManager.requestInstruments(completionHandler: { audioUnits in
             self.updateInstrumentsUI(audioUnits: audioUnits)
         })
     }
 
     internal func initUI() {
-//        let colors = [NSColor(calibratedRed: 0.888, green: 0.888, blue: 0.888, alpha: 1),
-//                      NSColor(calibratedRed: 0.748, green: 0.748, blue: 0.748, alpha: 1),
-//                      NSColor(calibratedRed: 0.612, green: 0.612, blue: 0.612, alpha: 1),
-//                      NSColor(calibratedRed: 0.558, green: 0.558, blue: 0.558, alpha: 1),
-//                      NSColor(calibratedRed: 0.483, green: 0.483, blue: 0.483, alpha: 1),
-//                      NSColor(calibratedRed: 0.35, green: 0.35, blue: 0.35, alpha: 1)]
-
         let colors = [NSColor(calibratedRed: 1, green: 0.652, blue: 0, alpha: 1),
                       NSColor(calibratedRed: 0.32, green: 0.584, blue: 0.8, alpha: 1),
                       NSColor(calibratedRed: 0.79, green: 0.372, blue: 0.191, alpha: 1),
@@ -58,8 +50,6 @@ extension AudioUnitManager {
     ////////////////////////////
 
     func showEffect(at auIndex: Int, state: Bool) {
-        guard let internalManager = internalManager else { return }
-
         if auIndex > internalManager.effectsChain.count - 1 {
             AKLog("index is out of range")
             return
@@ -82,7 +72,6 @@ extension AudioUnitManager {
     }
 
     func handleEffectSelected(_ auname: String, identifier: Int) {
-        guard let internalManager = internalManager else { return }
         AKLog("\(identifier) \(auname)")
 
         if auname == "-" {
@@ -157,8 +146,6 @@ extension AudioUnitManager {
     }
 
     private func fillAUMenu(button: MenuButton, manufacturers: [String], audioUnits: [AVAudioUnitComponent]) {
-        guard let internalManager = internalManager else { return }
-
         if button.menu == nil {
             let theMenu = NSMenu(title: "Effects")
             theMenu.font = NSFont.systemFont(ofSize: 10)
@@ -200,7 +187,7 @@ extension AudioUnitManager {
 
         let internalSubmenu = button.menu?.items.first(where: { $0.title == akInternals })
 
-        for name in internalManager.internalAudioUnits {
+        for name in AKAudioUnitManager.internalAudioUnits {
             let item = ClosureMenuItem(title: name, closure: { [weak self] in
                 guard let strongSelf = self else { return }
                 strongSelf.handleEffectSelected(name, identifier: button.tag)
@@ -246,8 +233,21 @@ extension AudioUnitManager {
     }
 
     public func showAudioUnit(_ audioUnit: AVAudioUnit, identifier: Int) {
+        var previousWindowOrigin: NSPoint?
+        if let w = getWindowFromIndentifier(identifier) {
+            previousWindowOrigin = w.frame.origin
+            w.close()
+        }
+
+        var windowColor = NSColor.darkGray
+        if let buttonColor = getMenuFromIdentifier(identifier)?.bgColor {
+            windowColor = buttonColor
+        }
+
         // first we ask the audio unit if it has a view controller inside it
         audioUnit.auAudioUnit.requestViewController { [weak self] viewController in
+            guard let strongSelf = self else { return }
+
             var ui = viewController
 
             DispatchQueue.main.async {
@@ -258,68 +258,57 @@ extension AudioUnitManager {
                     ui?.view = AudioUnitGenericView(audioUnit: audioUnit)
                 }
                 guard let theUI = ui else { return }
-                self?.createAUWindow(viewController: theUI, audioUnit: audioUnit, identifier: identifier)
+                strongSelf.createAUWindow(viewController: theUI,
+                                          audioUnit: audioUnit,
+                                          identifier: identifier,
+                                          origin: previousWindowOrigin,
+                                          color: windowColor)
             }
         }
     }
 
-    private func createAUWindow(viewController: NSViewController, audioUnit: AVAudioUnit, identifier: Int) {
-        guard let auName = audioUnit.auAudioUnit.audioUnitName else { return }
+    private func createAUWindow(viewController: NSViewController,
+                                audioUnit: AVAudioUnit,
+                                identifier: Int,
+                                origin: NSPoint? = nil,
+                                color: NSColor? = nil) {
 
         let incomingFrame = viewController.view.frame
-        guard let selfWindow = view.window else { return }
+        let toolbarHeight: CGFloat = 20
+        let windowColor = color ?? NSColor.darkGray
+
+        AKLog("Audio Unit incoming frame: \(incomingFrame)")
+
         let unitWindowController = AudioUnitGenericWindow(audioUnit: audioUnit)
+
         guard let unitWindow = unitWindowController.window else { return }
+        guard let auName = audioUnit.auAudioUnit.audioUnitName else { return }
+
+        let winId = windowPrefix + String(identifier)
+
+        let origin = origin ??
+            windowPositions[winId] ?? view.window?.frame.origin ?? NSPoint()
+
+        let f = NSRect(origin: origin,
+                       size: NSSize(width: incomingFrame.width, height: incomingFrame.height + toolbarHeight + 20))
+        unitWindow.setFrame(f, display: false)
 
         unitWindow.title = "\(auName)"
         unitWindow.delegate = self
-        unitWindow.identifier = NSUserInterfaceItemIdentifier(windowPrefix + String(identifier))
-
-        var windowColor = NSColor.darkGray
-        if let buttonColor = getMenuFromIdentifier(identifier)?.bgColor {
-            windowColor = buttonColor
-        }
+        unitWindow.identifier = NSUserInterfaceItemIdentifier(winId)
 
         unitWindowController.scrollView.documentView = viewController.view
-        NSLayoutConstraint.activateConstraintsEqualToSuperview(child: viewController.view)
         unitWindowController.toolbar?.backgroundColor = windowColor.withAlphaComponent(0.9)
 
-        if let gauv = viewController.view as? AudioUnitGenericView {
-            gauv.backgroundColor = windowColor
-        }
+        view.window?.addChildWindow(unitWindow, ordered: NSWindow.OrderingMode.above)
 
-        let toolbarHeight: CGFloat = 20
-
-        let f = NSRect(x: unitWindow.frame.origin.x,
-                       y: unitWindow.frame.origin.y,
-                       width: viewController.view.frame.width,
-                       height: viewController.view.frame.height + toolbarHeight + 20)
-        unitWindow.setFrame(f, display: true)
-
-        let uiFrame = NSRect(x: 0,
-                             y: 0,
-                             width: incomingFrame.width,
-                             height: incomingFrame.height + toolbarHeight)
-        viewController.view.frame = uiFrame
-
-        if let w = getWindowFromIndentifier(identifier) {
-            unitWindow.setFrameOrigin(w.frame.origin)
-            w.close()
-        }
-
-        selfWindow.addChildWindow(unitWindow, ordered: NSWindow.OrderingMode.above)
-        let windowLoc = NSPoint(x: selfWindow.frame.origin.x,
-                                y: selfWindow.frame.origin.y - unitWindow.frame.height)
-        unitWindow.setFrameOrigin(windowLoc)
-
-        if let button = getEffectsButtonFromIdentifier(identifier) {
+        if let button = self.getEffectsButtonFromIdentifier(identifier) {
             button.state = .on
         }
+
     }
 
     fileprivate func reconnect() {
-        guard let internalManager = internalManager else { return }
-
         // is FM playing?
         if fmOscillator.isStarted {
             internalManager.connectEffects(firstNode: fmOscillator, lastNode: mixer)
@@ -346,8 +335,7 @@ extension AudioUnitManager {
 extension AudioUnitManager: AKAudioUnitManagerDelegate {
 
     func handleAudioUnitNotification(type: AKAudioUnitManager.Notification, object: Any?) {
-        if type == AKAudioUnitManager.Notification.changed {
-            guard let internalManager = internalManager else { return }
+        if type == .changed {
             updateEffectsUI(audioUnits: internalManager.availableEffects)
         }
     }

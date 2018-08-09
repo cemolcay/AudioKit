@@ -2,22 +2,19 @@
 //  ViewController.m
 //  HelloObjectiveC
 //
-//  Created by Aurelius Prochazka on 1/27/16.
-//  Copyright © 2016 AudioKit. All rights reserved.
+//  Created by Aurelius Prochazka, revision history on Githbub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 #import "ViewController.h"
 
 @import AudioKit;
-@import AudioKitUI;
 
 @interface ViewController () {
     AKOscillator *oscillator1;
     AKOscillator *oscillator2;
     AKMixer *mixer;
 }
-
-@property (weak, nonatomic) IBOutlet AKNodeOutputPlot *nodeOutputPlot;
 
 @end
 
@@ -32,14 +29,13 @@
     mixer.volume = 0.5;
 
     AudioKit.output = mixer;
-    [AudioKit start];
+    [AudioKit startAndReturnError:nil];
 
     return self;
 }
 
 - (void) viewDidLoad {
     [super viewDidLoad];
-    self.nodeOutputPlot.node = mixer;
 }
 
 - (IBAction)toggleSound:(UIButton *)sender {

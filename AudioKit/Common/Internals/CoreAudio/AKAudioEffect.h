@@ -2,8 +2,8 @@
 //  AKAudioEffect.h
 //  AudioKit
 //
-//  Created by Andrew Voelkel on 8/28/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Andrew Voelkel, revision history on Github.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 #pragma once

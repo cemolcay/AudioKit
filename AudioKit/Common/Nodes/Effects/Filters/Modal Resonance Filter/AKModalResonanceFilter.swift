@@ -3,7 +3,7 @@
 //  AudioKit
 //
 //  Created by Aurelius Prochazka, revision history on Github.
-//  Copyright © 2017 Aurelius Prochazka. All rights reserved.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 /// A modal resonance filter used for modal synthesis. Plucked and bell sounds
@@ -16,46 +16,60 @@ open class AKModalResonanceFilter: AKNode, AKToggleable, AKComponent, AKInput {
     public static let ComponentDescription = AudioComponentDescription(effect: "modf")
 
     // MARK: - Properties
-
     private var internalAU: AKAudioUnitType?
     private var token: AUParameterObserverToken?
 
     fileprivate var frequencyParameter: AUParameter?
     fileprivate var qualityFactorParameter: AUParameter?
 
-    /// Ramp Time represents the speed at which parameters are allowed to change
-    @objc open dynamic var rampTime: Double = AKSettings.rampTime {
+    /// Lower and upper bounds for Frequency
+    public static let frequencyRange = 12.0 ... 20_000.0
+
+    /// Lower and upper bounds for Quality Factor
+    public static let qualityFactorRange = 0.0 ... 100.0
+
+    /// Initial value for Frequency
+    public static let defaultFrequency = 500.0
+
+    /// Initial value for Quality Factor
+    public static let defaultQualityFactor = 50.0
+
+    /// Ramp Duration represents the speed at which parameters are allowed to change
+    @objc open dynamic var rampDuration: Double = AKSettings.rampDuration {
         willSet {
-            internalAU?.rampTime = newValue
+            internalAU?.rampDuration = newValue
         }
     }
 
     /// Resonant frequency of the filter.
-    @objc open dynamic var frequency: Double = 500.0 {
+    @objc open dynamic var frequency: Double = defaultFrequency {
         willSet {
-            if frequency != newValue {
-                if internalAU?.isSetUp ?? false {
-                    if let existingToken = token {
-                        frequencyParameter?.setValue(Float(newValue), originator: existingToken)
-                    }
-                } else {
-                    internalAU?.frequency = Float(newValue)
+            if frequency == newValue {
+                return
+            }
+            if internalAU?.isSetUp ?? false {
+                if let existingToken = token {
+                    frequencyParameter?.setValue(Float(newValue), originator: existingToken)
+                    return
                 }
             }
+            internalAU?.setParameterImmediately(.frequency, value: newValue)
         }
     }
+
     /// Quality factor of the filter. Roughly equal to Q/frequency.
-    @objc open dynamic var qualityFactor: Double = 50.0 {
+    @objc open dynamic var qualityFactor: Double = defaultQualityFactor {
         willSet {
-            if qualityFactor != newValue {
-                if internalAU?.isSetUp ?? false {
-                    if let existingToken = token {
-                        qualityFactorParameter?.setValue(Float(newValue), originator: existingToken)
-                    }
-                } else {
-                    internalAU?.qualityFactor = Float(newValue)
+            if qualityFactor == newValue {
+                return
+            }
+            if internalAU?.isSetUp ?? false {
+                if let existingToken = token {
+                    qualityFactorParameter?.setValue(Float(newValue), originator: existingToken)
+                    return
                 }
             }
+            internalAU?.setParameterImmediately(.qualityFactor, value: newValue)
         }
     }
 
@@ -75,8 +89,9 @@ open class AKModalResonanceFilter: AKNode, AKToggleable, AKComponent, AKInput {
     ///
     @objc public init(
         _ input: AKNode? = nil,
-        frequency: Double = 500.0,
-        qualityFactor: Double = 50.0) {
+        frequency: Double = defaultFrequency,
+        qualityFactor: Double = defaultQualityFactor
+        ) {
 
         self.frequency = frequency
         self.qualityFactor = qualityFactor
@@ -85,11 +100,13 @@ open class AKModalResonanceFilter: AKNode, AKToggleable, AKComponent, AKInput {
 
         super.init()
         AVAudioUnit._instantiate(with: _Self.ComponentDescription) { [weak self] avAudioUnit in
-
-            self?.avAudioNode = avAudioUnit
-            self?.internalAU = avAudioUnit.auAudioUnit as? AKAudioUnitType
-
-            input?.connect(to: self!)
+            guard let strongSelf = self else {
+                AKLog("Error: self is nil")
+                return
+            }
+            strongSelf.avAudioNode = avAudioUnit
+            strongSelf.internalAU = avAudioUnit.auAudioUnit as? AKAudioUnitType
+            input?.connect(to: strongSelf)
         }
 
         guard let tree = internalAU?.parameterTree else {
@@ -112,8 +129,8 @@ open class AKModalResonanceFilter: AKNode, AKToggleable, AKComponent, AKInput {
             }
         })
 
-        internalAU?.frequency = Float(frequency)
-        internalAU?.qualityFactor = Float(qualityFactor)
+        internalAU?.setParameterImmediately(.frequency, value: frequency)
+        internalAU?.setParameterImmediately(.qualityFactor, value: qualityFactor)
     }
 
     // MARK: - Control

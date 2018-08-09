@@ -2,19 +2,20 @@
 //  AKSamplePlayer.swift
 //  AudioKit
 //
-//  Created by Jeff Cooper on 5/20/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Jeff Cooper, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
+/// An alternative to AKSampler or AKAudioPlayer, AKSamplePlayer is a player that 
+/// doesn't rely on an as much Apple AV foundation/engine code as the others.
+/// As any other Sampler, it plays a part of a given sound file at a specified rate 
+/// with specified volume. Changing the rate plays it faster and therefore sounds 
+/// higher or lower. Set rate to 2.0 to double playback speed and create an octave.  
+/// Give it a blast on `Sample Player.xcplaygroundpage`
 import Foundation
 
-/// A Sample type, just a UInt32
-public typealias Sample = UInt32
-
-/// Callback function that can be called from C
-public typealias AKCCallback = @convention(block) () -> Void
-
 /// Audio player that loads a sample into memory
+@available(*, deprecated, message: "AKSamplePlayer is now AKWaveTable")
 open class AKSamplePlayer: AKNode, AKComponent {
 
     public typealias AKAudioUnitType = AKSamplePlayerAudioUnit
@@ -33,10 +34,10 @@ open class AKSamplePlayer: AKNode, AKComponent {
     fileprivate var rateParameter: AUParameter?
     fileprivate var volumeParameter: AUParameter?
 
-    /// Ramp Time represents the speed at which parameters are allowed to change
-    @objc open dynamic var rampTime: Double = AKSettings.rampTime {
+    /// Ramp Duration represents the speed at which parameters are allowed to change
+    @objc open dynamic var rampDuration: Double = AKSettings.rampDuration {
         willSet {
-            internalAU?.rampTime = newValue
+            internalAU?.rampDuration = newValue
         }
     }
 
@@ -117,17 +118,21 @@ open class AKSamplePlayer: AKNode, AKComponent {
 
     /// Number of samples in the audio stored in memory
     open var size: Sample {
-        return Sample(avAudiofile.samplesCount)
+        if avAudiofile != nil {
+            return Sample(avAudiofile!.samplesCount)
+        }
+        return Sample(maximumSamples)
     }
 
     /// originalSampleRate
-    open var originalSampleRate: Double {
-        return avAudiofile.sampleRate
+    open var originalSampleRate: Double? {
+        return avAudiofile?.sampleRate
     }
 
     /// Position in the audio file from 0 - 1
     open var normalizedPosition: Double {
-        return Double(internalAU!.position())
+        guard let internalAU = internalAU else { return 0 }
+        return Double(internalAU.position())
     }
 
     /// Position in the audio in samples, but represented as a double since
@@ -141,9 +146,14 @@ open class AKSamplePlayer: AKNode, AKComponent {
         return internalAU?.isPlaying ?? false
     }
 
-    fileprivate var avAudiofile: AVAudioFile
+    fileprivate var avAudiofile: AVAudioFile?
     fileprivate var maximumSamples: Int = 0
 
+    open var loadCompletionHandler: AKCallback = {} {
+        willSet {
+            internalAU?.loadCompletionHandler = newValue
+        }
+    }
     open var completionHandler: AKCallback = {} {
         willSet {
             internalAU?.completionHandler = newValue
@@ -163,31 +173,40 @@ open class AKSamplePlayer: AKNode, AKComponent {
     ///   - maximumSamples: Largest number of samples that will be loaded into the sample player
     ///   - completionHandler: Callback to run when the sample playback is completed
     ///
-    @objc public init(file: AKAudioFile,
+    @objc public init(file: AKAudioFile? = nil,
                       startPoint: Sample = 0,
                       endPoint: Sample = 0,
                       rate: Double = 1,
                       volume: Double = 1,
                       maximumSamples: Int = 0,
-                      completionHandler: @escaping AKCCallback = { }) {
+                      completionHandler: @escaping AKCCallback = {},
+                      loadCompletionHandler: @escaping AKCCallback = {}) {
 
         self.startPoint = startPoint
         self.rate = rate
         self.volume = volume
-        self.avAudiofile = file
-        self.endPoint = Sample(avAudiofile.samplesCount)
+        self.endPoint = endPoint
+        if file != nil {
+            self.avAudiofile = file!
+            self.endPoint = Sample(avAudiofile!.samplesCount)
+        }
         self.maximumSamples = maximumSamples
         self.completionHandler = completionHandler
+        self.loadCompletionHandler = loadCompletionHandler
 
         _Self.register()
 
         super.init()
 
         AVAudioUnit._instantiate(with: _Self.ComponentDescription) { [weak self] avAudioUnit in
-
-            self?.avAudioNode = avAudioUnit
-            self?.internalAU = avAudioUnit.auAudioUnit as? AKAudioUnitType
-            self!.internalAU!.completionHandler = completionHandler
+            guard let strongSelf = self else {
+                AKLog("Error: self is nil")
+                return
+            }
+            strongSelf.avAudioNode = avAudioUnit
+            strongSelf.internalAU = avAudioUnit.auAudioUnit as? AKAudioUnitType
+            strongSelf.internalAU!.completionHandler = completionHandler
+            strongSelf.internalAU!.loadCompletionHandler = loadCompletionHandler
         }
 
         guard let tree = internalAU?.parameterTree else {
@@ -223,7 +242,9 @@ open class AKSamplePlayer: AKNode, AKComponent {
         if maximumSamples != 0 {
             internalAU?.setupAudioFileTable(UInt32(maximumSamples) * 2)
         }
-        load(file: file)
+        if file != nil {
+            load(file: file!)
+        }
     }
 
     // MARK: - Control
@@ -269,7 +290,7 @@ open class AKSamplePlayer: AKNode, AKComponent {
 
     func safeSample(_ point: Sample) -> Sample {
         if point > size { return size }
-        //if point < 0 { return 0 } doesn't work cause we're using uint32 for sample
+        // if point < 0 { return 0 } doesn't work cause we're using uint32 for sample
         return point
     }
 
@@ -284,18 +305,17 @@ open class AKSamplePlayer: AKNode, AKComponent {
             maximumSamples = Int(file.samplesCount)
             internalAU?.setupAudioFileTable(sizeToUse)
         }
-        var flattened = Array(file.floatChannelData!.joined())
-        if file.channelCount == 1 { //if mono, convert to stereo
-            flattened.append(contentsOf: file.floatChannelData![0])
-        }
-        let data = UnsafeMutablePointer<Float>(mutating: flattened)
-        internalAU?.loadAudioData(data, size: UInt32(flattened.count), sampleRate: Float(file.sampleRate))
+        let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))
+        try! file.read(into: buf!)
+        let data = buf!.floatChannelData
+        internalAU?.loadAudioData(data?.pointee, size: UInt32(file.samplesCount) * file.channelCount,
+                                  sampleRate: Float(file.sampleRate), numChannels: file.channelCount)
 
-        self.avAudiofile = file
-        self.startPoint = 0
-        self.endPoint = Sample(file.samplesCount)
-        self.loopStartPoint = 0
-        self.loopEndPoint = Sample(file.samplesCount)
+        avAudiofile = file
+        startPoint = 0
+        endPoint = Sample(file.samplesCount)
+        loopStartPoint = 0
+        loopEndPoint = Sample(file.samplesCount)
     }
     //todo open func loadSound()
 

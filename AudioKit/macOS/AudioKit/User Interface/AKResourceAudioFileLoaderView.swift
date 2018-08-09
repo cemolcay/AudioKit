@@ -2,7 +2,7 @@
 //  AKResourceAudioFileLoaderView.swift
 //  AudioKit for macOS
 //
-//  Created by Aurelius Prochazka on 7/30/16.
+//  Created by Aurelius Prochazka, revision history on Githbub.
 //  Copyright © 2017 Aurelius Prochazka. All rights reserved.
 //
 
@@ -68,7 +68,7 @@ public class AKResourcesAudioFileLoaderView: NSView {
             return
         }
         if playOuterPath.contains(touchLocation) {
-            Swift.print("Playing from: \(player.startTime)")
+            AKLog("Playing from: \(player.startTime)")
             player.play(from: player.startTime)
             return
         }
@@ -87,7 +87,7 @@ public class AKResourcesAudioFileLoaderView: NSView {
             player.stop()
             let filename = titles[currentIndex]
             guard let file = try? AKAudioFile(readFileName: "\(filename)", baseDir: .resources) else {
-                Swift.print("Unable to load file: \(filename)")
+                AKLog("Unable to load file: \(filename)")
                 return
             }
             player.load(audioFile: file)

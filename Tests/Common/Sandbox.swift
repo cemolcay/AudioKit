@@ -2,8 +2,8 @@
 //  Sandbox.swift
 //  iOSDevelopmentTests
 //
-//  Created by Aurelius Prochazka on 11/29/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Aurelius Prochazka, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 import Foundation

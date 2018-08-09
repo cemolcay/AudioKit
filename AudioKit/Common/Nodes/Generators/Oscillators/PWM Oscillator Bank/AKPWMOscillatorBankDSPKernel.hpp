@@ -3,21 +3,23 @@
 //  AudioKit
 //
 //  Created by Aurelius Prochazka, revision history on Github.
-//  Copyright © 2017 Aurelius Prochazka. All rights reserved.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
+#ifdef __cplusplus
 #pragma once
 
 #import "AKBankDSPKernel.hpp"
 
-enum {
-    standardBankEnumElements(),
-    pulseWidthAddress = numberOfBankEnumElements
-};
-
 class AKPWMOscillatorBankDSPKernel : public AKBankDSPKernel, public AKOutputBuffered {
 public:
     // MARK: Types
+    
+    enum {
+        standardBankEnumElements(),
+        pulseWidthAddress = numberOfBankEnumElements
+    };
+    
     struct NoteState {
         NoteState* next;
         NoteState* prev;
@@ -218,4 +220,6 @@ public:
 
     ParameterRamper pulseWidthRamper = 0.5;
 };
+
+#endif
 

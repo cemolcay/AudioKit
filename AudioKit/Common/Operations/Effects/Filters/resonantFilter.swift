@@ -3,7 +3,7 @@
 //  AudioKit
 //
 //  Created by Daniel Clelland, revision history on Github.
-//  Copyright © 2017 Aurelius Prochazka. All rights reserved.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 extension AKComputedParameter {

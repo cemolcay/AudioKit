@@ -2,8 +2,8 @@
 //  Conductor.swift
 //  SequencerDemo
 //
-//  Created by Kanstantsin Linou on 6/30/16.
-//  Copyright © 2016 AudioKit. All rights reserved.
+//  Created by Kanstantsin Linou, revision history on Githbub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 import AudioKit
@@ -55,13 +55,17 @@ class Conductor {
         pumper.headRoom = 0.10
         pumper.threshold = -15
         pumper.masterGain = 10
-        pumper.attackTime = 0.01
-        pumper.releaseTime = 0.3
+        pumper.attackDuration = 0.01
+        pumper.releaseDuration = 0.3
 
         [verb, bassDrum, snareDrum, snareGhost, snareVerb] >>> mixer
 
         AudioKit.output = pumper
-        AudioKit.start()
+        do {
+            try AudioKit.start()
+        } catch {
+            AKLog("AudioKit did not start!")
+        }
     }
 
     func setupTracks() {

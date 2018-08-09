@@ -2,8 +2,8 @@
 //  AKPropertyControl.swift
 //  AudioKit for iOS
 //
-//  Created by Aurelius Prochazka on 9/4/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Aurelius Prochazka, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 import UIKit
@@ -92,7 +92,10 @@ import UIKit
 
         setNeedsDisplay()
     }
-
+    
+    override init(frame: CGRect){
+        super.init(frame: frame)
+    }
     /// Initialization within Interface Builder
     required public init?(coder: NSCoder) {
         super.init(coder: coder)

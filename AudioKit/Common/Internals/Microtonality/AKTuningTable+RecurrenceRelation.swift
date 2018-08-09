@@ -2,8 +2,8 @@
 //  AKTuningTable+RecurrenceRelation.swift
 //  AudioKit
 //
-//  Created by Marcus W. Hobbs on 4/28/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Marcus W. Hobbs, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 extension AKTuningTable {

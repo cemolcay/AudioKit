@@ -34,7 +34,7 @@ class ViewController: UIViewController {
         let input = AKStereoInput()
 
         delay = AKVariableDelay(input)
-        delay?.rampTime = 0.5 // Allows for some cool effects
+        delay?.rampDuration = 0.5 // Allows for some cool effects
         delayMixer = AKDryWetMixer(input, delay!)
 
         reverb = AKCostelloReverb(delayMixer!)
@@ -43,7 +43,11 @@ class ViewController: UIViewController {
         booster = AKBooster(reverbMixer!)
 
         AudioKit.output = booster
-        AudioKit.start()
+        do {
+            try AudioKit.start()         
+        } catch {
+            AKLog("AudioKit did not start!")
+        }
         Audiobus.start()
 
         setupUI()

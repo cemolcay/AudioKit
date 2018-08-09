@@ -2,13 +2,26 @@
 //  AKLiveViewController.swift
 //  AudioKit for macOS
 //
-//  Created by Aurelius Prochazka on 9/2/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Aurelius Prochazka, revision history on Githbub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 import Cocoa
 
 public typealias AKLabel = NSTextField
+
+extension NSView {
+    var backgroundColor: NSColor? {
+        get {
+            guard let color = layer?.backgroundColor else { return nil }
+            return NSColor(cgColor: color)
+        }
+        set {
+            wantsLayer = true
+            layer?.backgroundColor = newValue?.cgColor
+        }
+    }
+}
 
 open class AKLiveViewController: NSViewController {
 
@@ -20,8 +33,10 @@ open class AKLiveViewController: NSViewController {
         stackView.alignment = .centerX
         stackView.distribution = .fillEqually
         stackView.spacing = 10
+        stackView.backgroundColor = NSColor.black
         stackView.translatesAutoresizingMaskIntoConstraints = false
         self.view = stackView
+
     }
 
     public func addTitle(_ text: String) {
@@ -31,11 +46,10 @@ open class AKLiveViewController: NSViewController {
         newLabel.drawsBackground = false
         newLabel.isBezeled = false
         newLabel.alignment = .center
-        newLabel.backgroundColor = NSColor.blue
         newLabel.textColor = AKStylist.sharedInstance.fontColor
         newLabel.font = NSFont.boldSystemFont(ofSize: 24)
-        newLabel.setFrameSize(NSSize(width:400, height: 80))
-        newLabel.heightAnchor.constraint(equalToConstant: 80).isActive = true
+        newLabel.setFrameSize(NSSize(width:400, height: 40))
+        newLabel.heightAnchor.constraint(equalToConstant: 40).isActive = true
         addView(newLabel)
     }
 
@@ -48,7 +62,7 @@ open class AKLiveViewController: NSViewController {
         newLabel.textColor = AKStylist.sharedInstance.fontColor
         newLabel.font = NSFont.systemFont(ofSize: 18)
         newLabel.setFrameSize(NSSize(width:400, height: 40))
-        newLabel.heightAnchor.constraint(equalToConstant: 80).isActive = true
+        newLabel.heightAnchor.constraint(equalToConstant: 40).isActive = true
         addView(newLabel)
         return newLabel
     }

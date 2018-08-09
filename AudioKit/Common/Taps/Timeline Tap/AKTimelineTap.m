@@ -2,12 +2,12 @@
 //  AKTimelineTap.m
 //  AudioKit
 //
-//  Created by David O'Neill on 8/28/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by David O'Neill, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
 #import "AKTimelineTap.h"
-#import <AudioKit/AudioKit.h>
+#import <AudioKit/AudioKit-Swift.h>
 
 @implementation AKTimelineTap {
     AKRenderTap *renderTap;

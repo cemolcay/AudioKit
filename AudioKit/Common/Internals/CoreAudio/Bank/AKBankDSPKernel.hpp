@@ -2,10 +2,11 @@
 //  AKBankDSPKernel.hpp
 //  AudioKit
 //
-//  Created by Aurelius Prochazka on 7/1/17.
-//  Copyright © 2017 AudioKit. All rights reserved.
+//  Created by Aurelius Prochazka, revision history on GitHub.
+//  Copyright © 2018 AudioKit. All rights reserved.
 //
 
+#ifdef __cplusplus
 #pragma once
 
 #import "AKSoundpipeKernel.hpp"
@@ -13,11 +14,6 @@
 
 static inline double pow2(double x) {
     return x * x;
-}
-
-static inline double noteToHz(int noteNumber)
-{
-    return 440. * exp2((noteNumber - 69)/12.);
 }
 
 #import "AKDSPKernel.hpp"
@@ -221,4 +217,6 @@ public:
     pitchBend = double(pitchBendRamper.getAndStep()); \
     vibratoDepth = double(vibratoDepthRamper.getAndStep()); \
     vibratoRate = double(vibratoRateRamper.getAndStep());
+
+#endif
 
